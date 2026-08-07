@@ -158,6 +158,15 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/api/v1", v1Router);
 app.use(express.static(join(process.cwd(), "public")));
 
+// Block legacy admin UI paths — API server only
+app.get(["/admin", "/admin.html", "/admin/", "/Admin.html"], (_req, res) => {
+  res.status(404).json({
+    error: "admin_ui_removed",
+    message: "Admin panel is not on API servers. Use aap-control-plane /admin",
+  });
+});
+
+
 // Admin token middleware for sensitive routes
 function requireAdmin(req: any, res: any, next: any) {
   if (!hasAdminToken()) return next();
