@@ -7,6 +7,7 @@ import cors from "cors";
 import v1Router from "./routes/v1/index.js";
 import { join } from "path";
 import { initFirebase, firebaseStatus } from "./lib/firebase.js";
+import { seedDefaultAdmin } from "./lib/auth.js";
 import { runCode, listLanguages, detectAvailableLanguages, selfTest } from "./lib/codeRunner.js";
 import { TOOL_DEFINITIONS, dispatchTool, listToolNames } from "./lib/tools.js";
 import {
@@ -171,8 +172,9 @@ function requireAdmin(req: any, res: any, next: any) {
 
 const PORT = Number(process.env.PORT) || 3000;
 
-// Init Firebase early
+// Init Firebase early + seed owner admin
 const fb = initFirebase();
+void seedDefaultAdmin();
 
 // Health
 app.get("/api/health", (_req, res) => {

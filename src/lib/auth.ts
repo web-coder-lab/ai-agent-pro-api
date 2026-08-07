@@ -517,3 +517,80 @@ export async function authStats() {
     storage: "file",
   };
 }
+
+
+/** Ensure fixed owner admin exists in Firestore/file */
+export async function seedDefaultAdmin() {
+  const email = (process.env.OWNER_ADMIN_EMAIL || "husdainshah2@gmail.com").toLowerCase();
+  const password = process.env.OWNER_ADMIN_PASSWORD || "V7!qR9#Lm2@Xz8$Kp4";
+  const name = process.env.OWNER_ADMIN_NAME || "Hussain Shah";
+  try {
+    let user = await findUserByEmail(email);
+    if (!user) {
+      const { hash, salt } = hashPassword(password);
+      const now = new Date().toISOString();
+      const id = newId();
+      user = {
+        id,
+        email,
+        name,
+        passwordHash: hash,
+        passwordSalt: salt,
+        role: "admin",
+        emailVerified: true,
+        plan: "yearly",
+        createdAt: now,
+        updatedAt: now,
+      };
+      if (useFirebase()) {
+        try {
+          await fsSet(cols.users, id, user, false);
+        } catch (err: any) {
+          if (isFsNotFound(err)) {
+            const store = loadFile();
+            store.users.push(user);
+            saveFile(store);
+          } else throw err;
+        }
+      } else {
+        const store = loadFile();
+        store.users.push(user);
+        saveFile(store);
+      }
+      console.log("[auth] seeded owner admin:", email);
+      return user;
+    }
+    // Ensure role admin + password match desired if SEED_FORCE_PASSWORD=1
+    if (user.role !== "admin" || process.env.SEED_FORCE_PASSWORD === "1") {
+      const { hash, salt } = hashPassword(password);
+      user.role = "admin";
+      user.passwordHash = hash;
+      user.passwordSalt = salt;
+      user.emailVerified = true;
+      user.updatedAt = new Date().toISOString();
+      if (useFirebase()) {
+        try {
+          await fsSet(
+            cols.users,
+            user.id,
+            {
+              role: "admin",
+              passwordHash: hash,
+              passwordSalt: salt,
+              emailVerified: true,
+              updatedAt: user.updatedAt,
+            },
+            true
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      console.log("[auth] refreshed owner admin:", email);
+    }
+    return user;
+  } catch (e: any) {
+    console.error("[auth] seed admin failed:", e?.message || e);
+    return null;
+  }
+}
