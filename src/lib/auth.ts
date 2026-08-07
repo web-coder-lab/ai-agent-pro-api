@@ -135,6 +135,16 @@ function useFirebase(): boolean {
   return !!getFirestore();
 }
 
+function isFsNotFound(e: any): boolean {
+  const msg = String(e?.message || e || "");
+  const code = String(e?.code || "");
+  return (
+    code.includes("not-found") ||
+    msg.includes("NOT_FOUND") ||
+    msg.includes("5 NOT_FOUND")
+  );
+}
+
 // ---------- File fallback ----------
 function loadFile(): UserStore {
   if (!existsSync(USERS_FILE)) return { users: [] };
@@ -154,16 +164,31 @@ function saveFile(store: UserStore) {
 export async function findUserByEmail(email: string): Promise<UserRecord | null> {
   const e = normalizeEmail(email);
   if (useFirebase()) {
-    const rows = await fsQuery(cols.users, [{ field: "email", op: "==", value: e }], undefined, 1);
-    return (rows[0] as UserRecord) || null;
+    try {
+      const rows = await fsQuery(cols.users, [{ field: "email", op: "==", value: e }], undefined, 1);
+      return (rows[0] as UserRecord) || null;
+    } catch (err: any) {
+      if (isFsNotFound(err)) {
+        // Firestore DB not created yet — fall back to file
+        return loadFile().users.find((u) => u.email === e) || null;
+      }
+      throw err;
+    }
   }
   return loadFile().users.find((u) => u.email === e) || null;
 }
 
 export async function findUserById(id: string): Promise<UserRecord | null> {
   if (useFirebase()) {
-    const row = await fsGet(cols.users, id);
-    return (row as UserRecord) || null;
+    try {
+      const row = await fsGet(cols.users, id);
+      return (row as UserRecord) || null;
+    } catch (err: any) {
+      if (isFsNotFound(err)) {
+        return loadFile().users.find((u) => u.id === id) || null;
+      }
+      throw err;
+    }
   }
   return loadFile().users.find((u) => u.id === id) || null;
 }
@@ -192,8 +217,12 @@ export async function registerUser(input: {
 
   let role: UserRole = "user";
   if (useFirebase()) {
-    const all = await fsList(cols.users, 5);
-    if (all.length === 0) role = "admin";
+    try {
+      const all = await fsList(cols.users, 5);
+      if (all.length === 0) role = "admin";
+    } catch {
+      if (loadFile().users.length === 0) role = "admin";
+    }
   } else {
     if (loadFile().users.length === 0) role = "admin";
   }
@@ -212,7 +241,18 @@ export async function registerUser(input: {
   };
 
   if (useFirebase()) {
-    await fsSet(cols.users, id, user, false);
+    try {
+      await fsSet(cols.users, id, user, false);
+    } catch (err: any) {
+      if (isFsNotFound(err)) {
+        // Firestore not provisioned — file fallback so register still works
+        const store = loadFile();
+        store.users.push(user);
+        saveFile(store);
+      } else {
+        throw err;
+      }
+    }
   } else {
     const store = loadFile();
     store.users.push(user);
@@ -237,7 +277,19 @@ export async function loginUser(email: string, password: string): Promise<UserRe
   user.updatedAt = now;
 
   if (useFirebase()) {
-    await fsSet(cols.users, user.id, { lastLoginAt: now, updatedAt: now }, true);
+    try {
+      await fsSet(cols.users, user.id, { lastLoginAt: now, updatedAt: now }, true);
+    } catch (err: any) {
+      if (!isFsNotFound(err)) throw err;
+      const store = loadFile();
+      const idx = store.users.findIndex((u) => u.id === user.id);
+      if (idx >= 0) {
+        store.users[idx].lastLoginAt = now;
+        store.users[idx].updatedAt = now;
+        saveFile(store);
+        return store.users[idx];
+      }
+    }
   } else {
     const store = loadFile();
     const idx = store.users.findIndex((u) => u.id === user.id);
@@ -295,7 +347,19 @@ export async function markEmailVerified(email: string): Promise<UserRecord> {
   user.emailVerified = true;
   user.updatedAt = new Date().toISOString();
   if (useFirebase()) {
-    await fsSet(cols.users, user.id, { emailVerified: true, updatedAt: user.updatedAt }, true);
+    try {
+      await fsSet(cols.users, user.id, { emailVerified: true, updatedAt: user.updatedAt }, true);
+    } catch (err: any) {
+      if (!isFsNotFound(err)) throw err;
+      const store = loadFile();
+      const idx = store.users.findIndex((u) => u.email === e);
+      if (idx >= 0) {
+        store.users[idx].emailVerified = true;
+        store.users[idx].updatedAt = user.updatedAt;
+        saveFile(store);
+        return store.users[idx];
+      }
+    }
   } else {
     const store = loadFile();
     const idx = store.users.findIndex((u) => u.email === e);
@@ -321,12 +385,25 @@ export async function updatePassword(email: string, newPassword: string): Promis
   user.passwordSalt = salt;
   user.updatedAt = new Date().toISOString();
   if (useFirebase()) {
-    await fsSet(
-      cols.users,
-      user.id,
-      { passwordHash: hash, passwordSalt: salt, updatedAt: user.updatedAt },
-      true
-    );
+    try {
+      await fsSet(
+        cols.users,
+        user.id,
+        { passwordHash: hash, passwordSalt: salt, updatedAt: user.updatedAt },
+        true
+      );
+    } catch (err: any) {
+      if (!isFsNotFound(err)) throw err;
+      const store = loadFile();
+      const idx = store.users.findIndex((u) => u.email === e);
+      if (idx >= 0) {
+        store.users[idx].passwordHash = hash;
+        store.users[idx].passwordSalt = salt;
+        store.users[idx].updatedAt = user.updatedAt;
+        saveFile(store);
+        return store.users[idx];
+      }
+    }
   } else {
     const store = loadFile();
     const idx = store.users.findIndex((u) => u.email === e);
@@ -347,7 +424,19 @@ export async function setUserPlan(userId: string, plan: string): Promise<UserRec
   user.plan = plan;
   user.updatedAt = new Date().toISOString();
   if (useFirebase()) {
-    await fsSet(cols.users, userId, { plan, updatedAt: user.updatedAt }, true);
+    try {
+      await fsSet(cols.users, userId, { plan, updatedAt: user.updatedAt }, true);
+    } catch (err: any) {
+      if (!isFsNotFound(err)) throw err;
+      const store = loadFile();
+      const idx = store.users.findIndex((u) => u.id === userId);
+      if (idx >= 0) {
+        store.users[idx].plan = plan;
+        store.users[idx].updatedAt = user.updatedAt;
+        saveFile(store);
+        return store.users[idx];
+      }
+    }
   } else {
     const store = loadFile();
     const idx = store.users.findIndex((u) => u.id === userId);
@@ -367,7 +456,19 @@ export async function setUserBanned(userId: string, banned: boolean): Promise<Us
   user.banned = banned;
   user.updatedAt = new Date().toISOString();
   if (useFirebase()) {
-    await fsSet(cols.users, userId, { banned, updatedAt: user.updatedAt }, true);
+    try {
+      await fsSet(cols.users, userId, { banned, updatedAt: user.updatedAt }, true);
+    } catch (err: any) {
+      if (!isFsNotFound(err)) throw err;
+      const store = loadFile();
+      const idx = store.users.findIndex((u) => u.id === userId);
+      if (idx >= 0) {
+        store.users[idx].banned = banned;
+        store.users[idx].updatedAt = user.updatedAt;
+        saveFile(store);
+        return store.users[idx];
+      }
+    }
   } else {
     const store = loadFile();
     const idx = store.users.findIndex((u) => u.id === userId);
@@ -383,21 +484,30 @@ export async function setUserBanned(userId: string, banned: boolean): Promise<Us
 
 export async function listUsers(): Promise<ReturnType<typeof publicUser>[]> {
   if (useFirebase()) {
-    const rows = await fsList(cols.users, 500);
-    return (rows as UserRecord[]).map((u) => publicUser(u));
+    try {
+      const rows = await fsList(cols.users, 500);
+      return (rows as UserRecord[]).map((u) => publicUser(u));
+    } catch (err: any) {
+      if (isFsNotFound(err)) return loadFile().users.map((u) => publicUser(u));
+      throw err;
+    }
   }
   return loadFile().users.map((u) => publicUser(u));
 }
 
 export async function authStats() {
   if (useFirebase()) {
-    const users = (await fsList(cols.users, 1000)) as UserRecord[];
-    return {
-      users: users.length,
-      admins: users.filter((u) => u.role === "admin").length,
-      verified: users.filter((u) => u.emailVerified).length,
-      storage: "firestore",
-    };
+    try {
+      const users = (await fsList(cols.users, 1000)) as UserRecord[];
+      return {
+        users: users.length,
+        admins: users.filter((u) => u.role === "admin").length,
+        verified: users.filter((u) => u.emailVerified).length,
+        storage: "firestore",
+      };
+    } catch (err: any) {
+      if (!isFsNotFound(err)) throw err;
+    }
   }
   const users = loadFile().users;
   return {
