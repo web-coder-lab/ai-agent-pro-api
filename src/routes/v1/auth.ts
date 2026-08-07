@@ -38,15 +38,18 @@ router.post("/register", async (req, res, next) => {
       role: user.role,
     });
 
-    let mail: unknown = null;
+    // Fire-and-forget mail (never block register response)
+    let mail: unknown = { queued: true };
     try {
       const otp = createRegisterOtp(user.email, 10);
-      mail = await sendTemplate(user.email, "register-otp", {
-        name: user.name,
-        code: otp.code,
-        expiresMinutes: String(otp.expiresMinutes),
-      });
-      await sendTemplate(user.email, "welcome", { name: user.name });
+      void Promise.allSettled([
+        sendTemplate(user.email, "register-otp", {
+          name: user.name,
+          code: otp.code,
+          expiresMinutes: String(otp.expiresMinutes),
+        }),
+        sendTemplate(user.email, "welcome", { name: user.name }),
+      ]).then((r) => log("info", `Register mail done ${user.email}`, "auth"));
     } catch (e: any) {
       log("warn", `Register mail skip: ${e.message}`, "auth");
     }

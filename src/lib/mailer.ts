@@ -71,21 +71,27 @@ export async function sendMail(opts: {
   }
 
   try {
-    // dynamic import — works after npm i nodemailer
     const nodemailer = await import("nodemailer");
     const transporter = nodemailer.createTransport({
       host: cfg.host,
       port: cfg.port,
       secure: cfg.secure,
       auth: { user: cfg.user, pass: cfg.pass },
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 12000,
     });
-    const info = await transporter.sendMail({
+    const sendPromise = transporter.sendMail({
       from: cfg.from,
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
       text: opts.text,
     });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("SMTP timeout 12s")), 12000)
+    );
+    const info: any = await Promise.race([sendPromise, timeoutPromise]);
     log("info", `Mail sent ${opts.to} ${opts.subject}`, "mail");
     return { ok: true, mode: "smtp", id: String(info.messageId || "") };
   } catch (e: any) {

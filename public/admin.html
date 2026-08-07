@@ -155,7 +155,10 @@ async function doLogin() {
     localStorage.setItem('adminToken', token);
     showApp();
   } catch (e) {
-    $('loginErr').textContent = e.message;
+    const msg = e.message || String(e);
+    $('loginErr').textContent = msg.includes('fetch') || msg.includes('Network')
+      ? 'Network error — server cold start? Wait 30s and retry.'
+      : msg;
   } finally {
     $('loginBtn').disabled = false;
   }
