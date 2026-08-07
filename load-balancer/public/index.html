@@ -8,40 +8,45 @@
   :root { --bg:#07070a; --card:#12121a; --line:#27272f; --txt:#f4f4f5; --mut:#a1a1aa; --ok:#34d399; --bad:#f87171; --acc:#a78bfa; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--txt); min-height:100vh; }
-  .wrap { max-width:720px; margin:0 auto; padding:20px 16px 48px; }
+  .wrap { max-width:760px; margin:0 auto; padding:20px 16px 56px; }
   h1 { font-size:1.35rem; margin:0 0 4px; }
-  .sub { color:var(--mut); font-size:.9rem; margin-bottom:20px; }
+  .sub { color:var(--mut); font-size:.9rem; margin-bottom:18px; line-height:1.45; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:14px; }
   label { display:block; font-size:.75rem; color:var(--mut); margin-bottom:6px; }
   input { width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--line); background:#0a0a10; color:var(--txt); font-size:15px; }
   .row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
-  button { border:0; border-radius:12px; padding:12px 16px; font-weight:600; cursor:pointer; background:linear-gradient(135deg,#7c3aed,#6d28d9); color:#fff; }
+  button { border:0; border-radius:12px; padding:11px 14px; font-weight:600; cursor:pointer; background:linear-gradient(135deg,#7c3aed,#6d28d9); color:#fff; font-size:.9rem; }
   button.ghost { background:#1f1f28; color:var(--txt); }
   button.danger { background:#450a0a; color:#fecaca; }
+  button.sm { padding:6px 10px; font-size:.75rem; }
   .pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:.72rem; font-weight:600; }
   .pill.up { background:#052e16; color:var(--ok); }
   .pill.down { background:#450a0a; color:var(--bad); }
   .pill.unk { background:#1f1f28; color:var(--mut); }
-  .item { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; padding:12px 0; border-bottom:1px solid var(--line); }
+  .item { padding:12px 0; border-bottom:1px solid var(--line); }
   .item:last-child { border-bottom:0; }
   .url { font-size:.85rem; word-break:break-all; }
   .meta { font-size:.72rem; color:var(--mut); margin-top:4px; }
   .err { color:var(--bad); font-size:.85rem; margin-top:8px; }
+  .okmsg { color:var(--ok); font-size:.85rem; margin-top:8px; }
+  code { background:#1f1f28; padding:1px 6px; border-radius:6px; font-size:.8rem; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>AAP Load Balancer</h1>
-  <div class="sub">Backend URLs add karo · health check automatic · API traffic round-robin</div>
+  <div class="sub">URL <b>ya IP:port</b> add/edit karo · health auto · round-robin<br/>
+    CIDR notes: <code>74.220.52.0/24</code> · <code>74.220.60.0/24</code> (code + husdainshah2)</div>
 
   <div class="card">
-    <label>New backend URL</label>
-    <input id="url" placeholder="https://your-server.onrender.com" />
+    <label>Backend (https://… ya 74.220.52.10:3000)</label>
+    <input id="url" placeholder="https://api… or 74.220.52.10:3000" />
     <div class="row">
-      <button id="addBtn">Add server</button>
+      <button id="addBtn">Add</button>
       <button class="ghost" id="refreshBtn">Refresh health</button>
     </div>
     <div class="err" id="err"></div>
+    <div class="okmsg" id="ok"></div>
   </div>
 
   <div class="card">
@@ -53,12 +58,16 @@
   </div>
 
   <div class="card">
-    <strong>Kaise use karein</strong>
-    <p class="meta" style="margin:8px 0 0;line-height:1.5;">
-      1. Is folder ko dost ke PC / VPS pe <code>node server.js</code> se chalao (port 8080)<br/>
-      2. Yahan Render server URLs add karo<br/>
-      3. Apps / APK base URL = is load balancer ka address (e.g. http://IP:8080)<br/>
-      4. LB har 20s health check karta hai · down server skip
+    <strong>Network notes</strong>
+    <div class="meta" id="cidrs" style="margin-top:8px;line-height:1.6;"></div>
+    <div class="meta" id="myip" style="margin-top:6px;"></div>
+  </div>
+
+  <div class="card">
+    <strong>Dost ke PC / VPS pe</strong>
+    <p class="meta" style="margin:8px 0 0;line-height:1.55;">
+      <code>cd load-balancer && node server.js</code><br/>
+      Open <code>http://IP:8080</code> · Apps base URL yahi LB rakho
     </p>
   </div>
 </div>
@@ -77,18 +86,20 @@ async function api(path, opts={}) {
 function render(data) {
   const list = data.backends || [];
   $('ts').textContent = data.time ? new Date(data.time).toLocaleTimeString() : '';
-  if (!list.length) { $('list').innerHTML = '<div class="meta">Koi server nahi — upar URL add karo</div>'; return; }
+  $('cidrs').innerHTML = (data.allowedCidrs || []).map(c => `<code>${c}</code>`).join(' · ') || '—';
+  $('myip').textContent = data.clientIp ? ('Your IP: ' + data.clientIp + (data.clientIpInAllowList ? ' · in allow-list' : '')) : '';
+  if (!list.length) { $('list').innerHTML = '<div class="meta">Koi server nahi</div>'; return; }
   $('list').innerHTML = list.map(b => {
     const st = b.ok === true ? 'up' : b.ok === false ? 'down' : 'unk';
     const label = st === 'up' ? 'UP' : st === 'down' ? 'DOWN' : '…';
+    const safe = b.url.replace(/'/g, "\\'");
     return `<div class="item">
-      <div style="flex:1;min-width:0">
-        <div class="url">${b.url}</div>
-        <div class="meta">${b.ms != null ? b.ms + ' ms' : ''} ${b.last ? '· ' + new Date(b.last).toLocaleTimeString() : ''} ${b.error ? '· ' + b.error : ''}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+      <div class="url">${b.url}</div>
+      <div class="meta">${b.ms != null ? b.ms + ' ms' : ''} ${b.last ? '· ' + new Date(b.last).toLocaleTimeString() : ''} ${b.error ? '· ' + b.error : ''}</div>
+      <div class="row" style="margin-top:8px">
         <span class="pill ${st}">${label}</span>
-        <button class="danger" style="padding:6px 10px;font-size:.75rem" onclick="removeUrl('${b.url.replace(/'/g,"\\'")}')">Remove</button>
+        <button class="ghost sm" onclick="editUrl('${safe}')">Edit</button>
+        <button class="danger sm" onclick="removeUrl('${safe}')">Remove</button>
       </div>
     </div>`;
   }).join('');
@@ -104,13 +115,25 @@ async function removeUrl(url) {
   await api('/lb/backends', { method: 'DELETE', body: { url } });
   refresh();
 }
+async function editUrl(from) {
+  const to = prompt('New URL or IP:port', from);
+  if (!to || to === from) return;
+  try {
+    await api('/lb/backends', { method: 'PUT', body: { from, to } });
+    $('ok').textContent = 'Updated';
+    setTimeout(() => $('ok').textContent = '', 2000);
+    refresh();
+  } catch (e) { $('err').textContent = e.message; }
+}
 $('addBtn').onclick = async () => {
   try {
     $('err').textContent = '';
-    const url = $('url').value.trim().replace(/\/$/, '');
+    $('ok').textContent = '';
+    const url = $('url').value.trim();
     if (!url) return;
-    await api('/lb/backends', { method: 'POST', body: { url } });
+    const r = await api('/lb/backends', { method: 'POST', body: { url } });
     $('url').value = '';
+    $('ok').textContent = 'Added: ' + (r.added || url);
     await api('/lb/health-now', { method: 'POST' });
     refresh();
   } catch (e) { $('err').textContent = e.message; }

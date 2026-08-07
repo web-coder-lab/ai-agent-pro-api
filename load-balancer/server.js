@@ -1,6 +1,9 @@
 /**
- * AI Agent Pro — simple reverse load balancer
- * Health-check based round-robin. Manage backends via UI or servers.json
+ * AI Agent Pro — reverse load balancer
+ * - Round-robin + health checks
+ * - Backends: full URLs or IP:port (http/https)
+ * - UI to add / edit / remove
+ * - Optional CIDR notes (74.220.52.0/24, 74.220.60.0/24)
  */
 import http from "http";
 import https from "https";
@@ -19,6 +22,7 @@ function loadConfig() {
       healthPath: "/api/health",
       healthIntervalMs: 20000,
       timeoutMs: 12000,
+      allowedCidrs: ["74.220.52.0/24", "74.220.60.0/24"],
     };
   }
   return JSON.parse(readFileSync(CONFIG_FILE, "utf8"));
@@ -28,8 +32,49 @@ function saveConfig(cfg) {
   writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
 }
 
+/** Normalize user input → http(s) URL */
+function normalizeBackend(input) {
+  let s = String(input || "").trim().replace(/\/$/, "");
+  if (!s) return null;
+  // bare IP or IP:port
+  if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(s)) {
+    s = "http://" + s;
+  }
+  // host without scheme
+  if (!/^https?:\/\//i.test(s)) {
+    s = "http://" + s;
+  }
+  try {
+    const u = new URL(s);
+    if (!u.hostname) return null;
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
+
+function ipToInt(ip) {
+  return ip.split(".").reduce((a, o) => (a << 8) + (Number(o) & 255), 0) >>> 0;
+}
+
+function cidrContains(cidr, ip) {
+  try {
+    const [base, bitsStr] = cidr.split("/");
+    const bits = Number(bitsStr);
+    if (!base || Number.isNaN(bits)) return false;
+    const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+    return (ipToInt(base) & mask) === (ipToInt(ip) & mask);
+  } catch {
+    return false;
+  }
+}
+
+function clientIp(req) {
+  const xf = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return xf || req.socket?.remoteAddress || "";
+}
+
 let cfg = loadConfig();
-/** @type {Map<string, {ok:boolean, ms:number, last:string, error?:string}>} */
 const health = new Map();
 let rr = 0;
 
@@ -39,12 +84,10 @@ function checkOne(url) {
     const lib = target.startsWith("https") ? https : http;
     const t0 = Date.now();
     const req = lib.get(target, { timeout: cfg.timeoutMs || 12000 }, (res) => {
-      let body = "";
-      res.on("data", (c) => (body += c));
+      res.resume();
       res.on("end", () => {
-        const ms = Date.now() - t0;
         const ok = res.statusCode >= 200 && res.statusCode < 500;
-        health.set(url, { ok, ms, last: new Date().toISOString() });
+        health.set(url, { ok, ms: Date.now() - t0, last: new Date().toISOString() });
         resolve(ok);
       });
     });
@@ -71,8 +114,8 @@ function checkOne(url) {
 }
 
 async function healthLoop() {
-  const list = cfg.backends || [];
-  await Promise.all(list.map((u) => checkOne(u)));
+  cfg = loadConfig();
+  await Promise.all((cfg.backends || []).map((u) => checkOne(u)));
 }
 setInterval(healthLoop, 20000);
 healthLoop();
@@ -143,7 +186,6 @@ function serveStatic(res, file, type) {
 const server = http.createServer(async (req, res) => {
   const path = (req.url || "/").split("?")[0];
 
-  // CORS for UI
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS,PATCH");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-token");
@@ -155,50 +197,110 @@ const server = http.createServer(async (req, res) => {
   if (path === "/" || path === "/lb") {
     return serveStatic(res, "index.html", "text/html; charset=utf-8");
   }
+
   if (path === "/lb/status") {
     cfg = loadConfig();
     const backends = (cfg.backends || []).map((url) => ({
       url,
       ...(health.get(url) || { ok: null, ms: null, last: null }),
     }));
+    const ip = clientIp(req).replace(/^::ffff:/, "");
+    const cidrs = cfg.allowedCidrs || [];
+    const ipAllowed = !cidrs.length || cidrs.some((c) => cidrContains(c, ip));
     res.writeHead(200, { "content-type": "application/json" });
-    return res.end(JSON.stringify({ ok: true, backends, config: cfg, time: new Date().toISOString() }));
+    return res.end(
+      JSON.stringify({
+        ok: true,
+        backends,
+        allowedCidrs: cidrs,
+        clientIp: ip,
+        clientIpInAllowList: ipAllowed,
+        config: {
+          healthPath: cfg.healthPath,
+          healthIntervalMs: cfg.healthIntervalMs,
+          timeoutMs: cfg.timeoutMs,
+        },
+        time: new Date().toISOString(),
+      })
+    );
   }
+
   if (path === "/lb/backends" && req.method === "GET") {
     res.writeHead(200, { "content-type": "application/json" });
-    return res.end(JSON.stringify({ backends: cfg.backends || [] }));
+    return res.end(JSON.stringify({ backends: cfg.backends || [], allowedCidrs: cfg.allowedCidrs || [] }));
   }
+
   if (path === "/lb/backends" && req.method === "POST") {
     const body = await readBody(req);
-    const url = String(body.url || "").replace(/\/$/, "");
-    if (!url.startsWith("http")) {
+    const url = normalizeBackend(body.url);
+    if (!url) {
       res.writeHead(400, { "content-type": "application/json" });
-      return res.end(JSON.stringify({ error: "url must start with http" }));
+      return res.end(JSON.stringify({ error: "invalid url or ip — examples: https://x.onrender.com or 74.220.52.10:3000" }));
     }
     cfg = loadConfig();
     if (!cfg.backends.includes(url)) cfg.backends.push(url);
     saveConfig(cfg);
     await checkOne(url);
     res.writeHead(200, { "content-type": "application/json" });
-    return res.end(JSON.stringify({ ok: true, backends: cfg.backends }));
+    return res.end(JSON.stringify({ ok: true, backends: cfg.backends, added: url }));
   }
-  if (path === "/lb/backends" && req.method === "DELETE") {
+
+  // Edit: replace old URL with new
+  if (path === "/lb/backends" && req.method === "PUT") {
     const body = await readBody(req);
-    const url = String(body.url || "").replace(/\/$/, "");
+    const from = normalizeBackend(body.from || body.old);
+    const to = normalizeBackend(body.to || body.url || body.new);
+    if (!from || !to) {
+      res.writeHead(400, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ error: "from and to required (url or ip)" }));
+    }
     cfg = loadConfig();
-    cfg.backends = (cfg.backends || []).filter((u) => u !== url);
+    const idx = (cfg.backends || []).indexOf(from);
+    if (idx < 0) {
+      res.writeHead(404, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ error: "backend not found", from }));
+    }
+    cfg.backends[idx] = to;
+    cfg.backends = [...new Set(cfg.backends)];
     saveConfig(cfg);
-    health.delete(url);
+    health.delete(from);
+    await checkOne(to);
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify({ ok: true, backends: cfg.backends }));
   }
+
+  if (path === "/lb/backends" && req.method === "DELETE") {
+    const body = await readBody(req);
+    const url = normalizeBackend(body.url);
+    cfg = loadConfig();
+    cfg.backends = (cfg.backends || []).filter((u) => u !== url);
+    saveConfig(cfg);
+    if (url) health.delete(url);
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ ok: true, backends: cfg.backends }));
+  }
+
+  if (path === "/lb/cidrs" && req.method === "POST") {
+    const body = await readBody(req);
+    cfg = loadConfig();
+    if (Array.isArray(body.allowedCidrs)) {
+      cfg.allowedCidrs = body.allowedCidrs.map(String);
+    } else if (body.cidr) {
+      const c = String(body.cidr).trim();
+      cfg.allowedCidrs = cfg.allowedCidrs || [];
+      if (c && !cfg.allowedCidrs.includes(c)) cfg.allowedCidrs.push(c);
+    }
+    saveConfig(cfg);
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ ok: true, allowedCidrs: cfg.allowedCidrs }));
+  }
+
   if (path === "/lb/health-now" && req.method === "POST") {
     await healthLoop();
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify({ ok: true }));
   }
 
-  // Proxy API traffic
   const backend = pickBackend();
   if (!backend) {
     res.writeHead(503, { "content-type": "application/json" });
@@ -209,5 +311,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`AAP Load Balancer → http://0.0.0.0:${PORT}`);
-  console.log(`UI: /   status: /lb/status   backends: ${cfg.backends?.length || 0}`);
+  console.log(`UI /  · status /lb/status  · backends ${cfg.backends?.length || 0}`);
+  console.log(`CIDRs: ${(cfg.allowedCidrs || []).join(", ") || "none"}`);
 });
