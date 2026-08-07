@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Admin · AI Agent Pro</title>
+<meta name="theme-color" content="#09090b"/>
+<style>
+  :root { --bg:#09090b; --card:#121214; --line:#27272a; --text:#fafafa; --muted:#a1a1aa; --violet:#7c3aed; --ok:#34d399; --bad:#f87171; --warn:#fbbf24; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Inter,system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+  .hidden { display:none !important; }
+  #loginView { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .box { width:100%; max-width:400px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:28px 24px; }
+  h1 { margin:0 0 6px; font-size:1.25rem; }
+  .sub { color:var(--muted); font-size:.85rem; margin-bottom:18px; }
+  label { display:block; font-size:.75rem; color:var(--muted); margin:12px 0 6px; }
+  input, select, textarea {
+    width:100%; background:#0c0c0e; border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:10px 12px; font-size:.9rem;
+  }
+  textarea { min-height:80px; resize:vertical; }
+  button, .btn {
+    border:0; border-radius:10px; padding:10px 14px; font-weight:600; font-size:.85rem;
+    cursor:pointer; background:var(--violet); color:#fff;
+  }
+  button.secondary { background:#27272a; color:#e4e4e7; }
+  button.danger { background:#7f1d1d; color:#fecaca; }
+  button.ok { background:#065f46; color:#a7f3d0; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .err { color:var(--bad); font-size:.8rem; margin-top:10px; min-height:1.2em; }
+  #app { display:none; min-height:100vh; }
+  #app.open { display:flex; }
+  aside {
+    width:220px; background:#0c0c0e; border-right:1px solid var(--line);
+    padding:16px 12px; display:flex; flex-direction:column; gap:6px;
+  }
+  aside .brand { font-weight:700; font-size:.95rem; padding:8px 10px 14px; color:#c4b5fd; }
+  aside button.nav {
+    text-align:left; background:transparent; color:var(--muted); font-weight:500;
+  }
+  aside button.nav.active { background:#1c1033; color:#e9d5ff; }
+  main { flex:1; padding:20px; overflow:auto; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; gap:12px; flex-wrap:wrap; }
+  .top h2 { margin:0; font-size:1.15rem; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; margin-bottom:18px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .stat b { display:block; font-size:1.3rem; margin-top:4px; }
+  .stat span { font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  table { width:100%; border-collapse:collapse; font-size:.82rem; }
+  th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:.72rem; text-transform:uppercase; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:14px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:.7rem; background:#27272a; }
+  .pill.pending { background:#422006; color:#fbbf24; }
+  .pill.approved { background:#064e3b; color:#6ee7b7; }
+  .pill.rejected { background:#450a0a; color:#fca5a5; }
+  .pill.admin { background:#3b0764; color:#e9d5ff; }
+  .muted { color:var(--muted); }
+  .log { font-family:ui-monospace,monospace; font-size:.72rem; max-height:420px; overflow:auto; }
+  .log div { padding:4px 0; border-bottom:1px solid #1f1f23; }
+  @media (max-width:720px) {
+    #app.open { flex-direction:column; }
+    aside { width:100%; flex-direction:row; flex-wrap:wrap; border-right:0; border-bottom:1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+
+<div id="loginView">
+  <div class="box">
+    <h1>Admin Panel</h1>
+    <div class="sub">AI Agent Pro · server control</div>
+    <label>Email</label>
+    <input id="email" type="email" placeholder="admin@example.com" autocomplete="username"/>
+    <label>Password</label>
+    <input id="password" type="password" placeholder="••••••••" autocomplete="current-password"/>
+    <div style="margin-top:16px" class="row">
+      <button id="loginBtn" style="flex:1">Login</button>
+    </div>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<div id="app">
+  <aside>
+    <div class="brand">Admin · AAP</div>
+    <button class="nav active" data-tab="overview">Overview</button>
+    <button class="nav" data-tab="users">Users</button>
+    <button class="nav" data-tab="payments">Payments</button>
+    <button class="nav" data-tab="plans">Plans</button>
+    <button class="nav" data-tab="announce">Announcements</button>
+    <button class="nav" data-tab="logs">Logs</button>
+    <button class="nav" data-tab="health">Health</button>
+    <div style="flex:1"></div>
+    <button class="secondary" id="logoutBtn">Logout</button>
+  </aside>
+  <main>
+    <div class="top">
+      <h2 id="title">Overview</h2>
+      <div class="muted" id="who"></div>
+    </div>
+    <div id="content">Loading…</div>
+  </main>
+</div>
+
+<script>
+const API = '/api/v1';
+const $ = (id) => document.getElementById(id);
+let token = localStorage.getItem('adminToken') || '';
+let me = null;
+let tab = 'overview';
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const r = await fetch(API + path, {
+    method: opts.method || 'GET',
+    headers,
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+  });
+  const t = await r.text();
+  let data;
+  try { data = t ? JSON.parse(t) : null; } catch { throw new Error(t || r.statusText); }
+  if (!r.ok) {
+    const msg = data?.error?.message || data?.error || t || ('HTTP ' + r.status);
+    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+  }
+  return data.ok ? data.data : data;
+}
+
+function showApp() {
+  $('loginView').classList.add('hidden');
+  $('app').classList.add('open');
+  $('who').textContent = me ? (me.email + ' · ' + me.role) : '';
+  render();
+}
+function showLogin() {
+  $('app').classList.remove('open');
+  $('loginView').classList.remove('hidden');
+}
+
+async function doLogin() {
+  $('loginErr').textContent = '';
+  $('loginBtn').disabled = true;
+  try {
+    const d = await api('/auth/login', {
+      method: 'POST',
+      body: { email: $('email').value.trim(), password: $('password').value },
+    });
+    if (d.user?.role !== 'admin') throw new Error('Admin role required');
+    token = d.token;
+    me = d.user;
+    localStorage.setItem('adminToken', token);
+    showApp();
+  } catch (e) {
+    $('loginErr').textContent = e.message;
+  } finally {
+    $('loginBtn').disabled = false;
+  }
+}
+
+function logout() {
+  token = '';
+  me = null;
+  localStorage.removeItem('adminToken');
+  showLogin();
+}
+
+document.querySelectorAll('aside button.nav').forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll('aside button.nav').forEach((x) => x.classList.remove('active'));
+    b.classList.add('active');
+    tab = b.dataset.tab;
+    $('title').textContent = b.textContent;
+    render();
+  };
+});
+$('loginBtn').onclick = doLogin;
+$('logoutBtn').onclick = logout;
+$('password').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+
+async function render() {
+  const el = $('content');
+  el.innerHTML = 'Loading…';
+  try {
+    if (tab === 'overview') {
+      const d = await api('/admin/overview');
+      el.innerHTML = `
+        <div class="grid">
+          <div class="stat"><span>Users</span><b>${d.users}</b></div>
+          <div class="stat"><span>Pending pays</span><b>${d.paymentsPending}</b></div>
+          <div class="stat"><span>All pays</span><b>${d.paymentsTotal}</b></div>
+          <div class="stat"><span>Announcements</span><b>${d.announcements}</b></div>
+          <div class="stat"><span>SMTP</span><b>${d.mail?.configured ? 'ON' : 'OFF'}</b></div>
+        </div>
+        <div class="card muted">Plans: ${(d.plans||[]).join(' · ')}</div>`;
+    } else if (tab === 'users') {
+      const d = await api('/admin/users');
+      const plans = ['free','weekly','monthly','six_month','yearly'];
+      el.innerHTML = `<div class="card"><table>
+        <tr><th>Email</th><th>Plan</th><th>Role</th><th>Verified</th><th>Actions</th></tr>
+        ${(d.users||[]).map(u => `<tr>
+          <td>${esc(u.email)}<div class="muted">${esc(u.name||'')}</div></td>
+          <td>
+            <select data-plan="${u.id}">
+              ${plans.map(p => `<option value="${p}" ${u.plan===p?'selected':''}>${p}</option>`).join('')}
+            </select>
+            <button class="secondary" data-setplan="${u.id}">Set</button>
+          </td>
+          <td>${u.role==='admin'?'<span class="pill admin">admin</span>':'user'}</td>
+          <td>${u.emailVerified?'yes':'no'}</td>
+          <td>
+            <button class="danger" data-ban="${u.id}" data-banned="true">Ban</button>
+            <button class="ok" data-ban="${u.id}" data-banned="false">Unban</button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="5" class="muted">No users</td></tr>'}
+      </table></div>`;
+      el.querySelectorAll('[data-setplan]').forEach(btn => {
+        btn.onclick = async () => {
+          const id = btn.getAttribute('data-setplan');
+          const plan = el.querySelector(`select[data-plan="${id}"]`).value;
+          await api('/admin/users/' + id + '/plan', { method:'POST', body:{ plan } });
+          render();
+        };
+      });
+      el.querySelectorAll('[data-ban]').forEach(btn => {
+        btn.onclick = async () => {
+          await api('/admin/users/' + btn.getAttribute('data-ban') + '/ban', {
+            method:'POST', body:{ banned: btn.getAttribute('data-banned') === 'true' }
+          });
+          render();
+        };
+      });
+    } else if (tab === 'payments') {
+      const d = await api('/admin/payments');
+      el.innerHTML = `<div class="card"><table>
+        <tr><th>User</th><th>Plan</th><th>Method</th><th>Txn</th><th>Status</th><th></th></tr>
+        ${(d.payments||[]).map(p => `<tr>
+          <td>${esc(p.email)}</td>
+          <td>${esc(p.plan)}</td>
+          <td>${esc(p.method)} · ${esc(p.amount)}</td>
+          <td><code>${esc(p.txnRef)}</code></td>
+          <td><span class="pill ${p.status}">${p.status}</span></td>
+          <td>${p.status==='pending' ? `
+            <button class="ok" data-approve="${p.id}">Approve</button>
+            <button class="danger" data-reject="${p.id}">Reject</button>` : '—'}
+          </td>
+        </tr>`).join('') || '<tr><td colspan="6" class="muted">No payments</td></tr>'}
+      </table></div>`;
+      el.querySelectorAll('[data-approve]').forEach(b => b.onclick = async () => {
+        await api('/admin/payments/' + b.getAttribute('data-approve') + '/approve', { method:'POST', body:{} });
+        render();
+      });
+      el.querySelectorAll('[data-reject]').forEach(b => b.onclick = async () => {
+        await api('/admin/payments/' + b.getAttribute('data-reject') + '/reject', { method:'POST', body:{} });
+        render();
+      });
+    } else if (tab === 'plans') {
+      const d = await api('/admin/plans');
+      el.innerHTML = `<div class="grid">
+        ${(d.plans||[]).map(p => `<div class="stat">
+          <span>${esc(p.name)}</span>
+          <b>${p.storageMb} MB</b>
+          <div class="muted" style="margin-top:6px;font-size:.75rem">${(p.features||[]).slice(0,5).join(', ')}${(p.features||[]).length>5?'…':''}</div>
+        </div>`).join('')}
+      </div>`;
+    } else if (tab === 'announce') {
+      const d = await api('/admin/announcements');
+      el.innerHTML = `
+        <div class="card">
+          <label>Title</label><input id="anTitle"/>
+          <label>Body</label><textarea id="anBody"></textarea>
+          <div class="row" style="margin-top:10px"><button id="anSave">Publish</button></div>
+        </div>
+        <div class="card"><table>
+          <tr><th>Title</th><th>Active</th><th></th></tr>
+          ${(d.items||[]).map(a => `<tr>
+            <td><b>${esc(a.title)}</b><div class="muted">${esc(a.body)}</div></td>
+            <td>${a.active?'yes':'no'}</td>
+            <td>
+              <button class="secondary" data-an="${a.id}" data-active="${!a.active}">${a.active?'Disable':'Enable'}</button>
+            </td>
+          </tr>`).join('') || '<tr><td colspan="3" class="muted">None</td></tr>'}
+        </table></div>`;
+      $('anSave').onclick = async () => {
+        await api('/admin/announcements', { method:'POST', body:{ title: $('anTitle').value, body: $('anBody').value } });
+        render();
+      };
+      el.querySelectorAll('[data-an]').forEach(b => b.onclick = async () => {
+        await api('/admin/announcements/' + b.getAttribute('data-an') + '/active', {
+          method:'POST', body:{ active: b.getAttribute('data-active') === 'true' }
+        });
+        render();
+      });
+    } else if (tab === 'logs') {
+      const d = await api('/admin/logs?limit=100');
+      el.innerHTML = `<div class="card log">${(d.logs||[]).map(l =>
+        `<div><span class="muted">${esc((l.ts||'').slice(11,19))}</span> <b>${esc(l.level)}</b> [${esc(l.source)}] ${esc(l.message)}</div>`
+      ).join('') || '<div class="muted">No logs</div>'}</div>`;
+    } else if (tab === 'health') {
+      const d = await api('/admin/health');
+      el.innerHTML = `<div class="grid">
+        <div class="stat"><span>Uptime</span><b>${d.uptimeSec}s</b></div>
+        <div class="stat"><span>Memory</span><b>${d.memoryMb} MB</b></div>
+        <div class="stat"><span>Node</span><b>${esc(d.node)}</b></div>
+        <div class="stat"><span>SMTP</span><b>${d.mail?.configured?'configured':'outbox'}</b></div>
+      </div>
+      <div class="card muted">${esc(d.time)}</div>`;
+    }
+  } catch (e) {
+    if (/unauth|token|admin/i.test(e.message)) { logout(); return; }
+    el.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+(async () => {
+  if (!token) return;
+  try {
+    const d = await api('/auth/me');
+    if (d.user?.role !== 'admin') throw new Error('not admin');
+    me = d.user;
+    showApp();
+  } catch {
+    logout();
+  }
+})();
+</script>
+</body>
+</html>

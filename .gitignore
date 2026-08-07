@@ -1,0 +1,7 @@
+node_modules/
+.data/
+workspace/users/
+*.log
+.DS_Store
+# .env intentionally tracked for Render testing (private repo)
+firebase-service-account.json
