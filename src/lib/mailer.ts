@@ -86,7 +86,15 @@ export async function sendMail(opts: {
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
-      text: opts.text,
+      text: opts.text || undefined,
+      replyTo: cfg.from,
+      headers: {
+        "X-Mailer": "AI-Agent-Pro",
+        "X-Priority": "3",
+        "List-Unsubscribe": `<mailto:${cfg.user}?subject=unsubscribe>`,
+        "Feedback-ID": "aap:transactional:server",
+      },
+      messageId: `<${Date.now()}.${Math.random().toString(36).slice(2)}@ai-agent-pro>`,
     });
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("SMTP timeout 12s")), 12000)

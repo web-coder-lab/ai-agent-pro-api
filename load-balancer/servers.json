@@ -1,0 +1,9 @@
+{
+  "backends": [
+    "https://ai-agent-pro-api.onrender.com",
+    "https://ai-agent-pro-api-nz4k.onrender.com"
+  ],
+  "healthPath": "/api/health",
+  "healthIntervalMs": 20000,
+  "timeoutMs": 12000
+}
