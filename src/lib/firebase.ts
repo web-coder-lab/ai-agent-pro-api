@@ -1,6 +1,6 @@
 /**
- * Firebase Admin + Firestore init
- * Project: rg-tournament-ccd7d
+ * Cloud store init (Firestore)
+ * Credentials loaded from Tiktok.txt (base64) — not from .env
  */
 
 import { readFileSync, existsSync } from "fs";
@@ -14,33 +14,40 @@ let db: any = null;
 let initialized = false;
 let initError: string | null = null;
 
+function loadCredsFromTiktok(): any {
+  const candidates = [
+    join(process.cwd(), "Tiktok.txt"),
+    join(process.cwd(), "tiktok.txt"),
+    join(process.cwd(), "TIKTOK.txt"),
+  ];
+  let raw = "";
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      raw = readFileSync(p, "utf8");
+      break;
+    }
+  }
+  if (!raw) {
+    throw new Error("Tiktok.txt not found (Firebase credentials file)");
+  }
+  // strip comments / blank lines, join base64
+  const b64 = raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"))
+    .join("");
+  const json = Buffer.from(b64, "base64").toString("utf8");
+  return JSON.parse(json);
+}
+
 export function initFirebase() {
   if (initialized) return { admin, db, ok: !!db, error: initError };
 
   try {
-    // Dynamic require so project still boots if firebase-admin not installed yet
     admin = require("firebase-admin");
 
     if (admin.apps.length === 0) {
-      let serviceAccount: any = null;
-
-      // 1) Prefer JSON string in env (Render-friendly, no secret file)
-      const jsonEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-      if (jsonEnv && jsonEnv.trim().startsWith("{")) {
-        serviceAccount = JSON.parse(jsonEnv);
-      } else {
-        // 2) Fallback to file path
-        const saPath =
-          process.env.FIREBASE_SERVICE_ACCOUNT_PATH ||
-          process.env.GOOGLE_APPLICATION_CREDENTIALS ||
-          join(process.cwd(), "firebase-service-account.json");
-        if (!existsSync(saPath)) {
-          throw new Error(
-            `Firebase credentials missing. Set FIREBASE_SERVICE_ACCOUNT_JSON or file at ${saPath}`
-          );
-        }
-        serviceAccount = JSON.parse(readFileSync(saPath, "utf8"));
-      }
+      const serviceAccount = loadCredsFromTiktok();
 
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
@@ -52,17 +59,16 @@ export function initFirebase() {
     }
 
     db = admin.firestore();
-    // Ignore undefined properties
     db.settings({ ignoreUndefinedProperties: true });
 
     initialized = true;
     initError = null;
-    console.log("[firebase] initialized · project=rg-tournament-ccd7d");
+    console.log("[cloud] store online · project=" + (process.env.FIREBASE_PROJECT_ID || "rg-tournament-ccd7d"));
     return { admin, db, ok: true, error: null };
   } catch (e: any) {
     initError = e?.message || String(e);
-    console.error("[firebase] init failed:", initError);
-    initialized = true; // don't retry forever
+    console.error("[cloud] init failed:", initError);
+    initialized = true;
     return { admin: null, db: null, ok: false, error: initError };
   }
 }
@@ -82,11 +88,10 @@ export function firebaseStatus() {
   return {
     ok: !!db,
     projectId: process.env.FIREBASE_PROJECT_ID || "rg-tournament-ccd7d",
+    source: "Tiktok.txt",
     error: initError,
   };
 }
-
-// ---------- Firestore helpers (users + generic collections) ----------
 
 const USERS_COL = "users";
 const PROVIDERS_COL = "providers";
@@ -146,7 +151,7 @@ export async function fsDelete(collection: string, id: string) {
 
 export async function fsQuery(
   collection: string,
-  filters: Array<{ field: string; op: FirebaseFirestore.WhereFilterOp; value: any }> = [],
+  filters: Array<{ field: string; op: any; value: any }> = [],
   orderBy?: { field: string; dir?: "asc" | "desc" },
   limit?: number
 ) {
@@ -168,7 +173,6 @@ export async function fsList(collection: string, limit = 200) {
   return fsQuery(collection, [], undefined, limit);
 }
 
-// Convenience
 export const cols = {
   users: USERS_COL,
   providers: PROVIDERS_COL,
@@ -181,4 +185,17 @@ export const cols = {
   settings: SETTINGS_COL,
 };
 
-export default { initFirebase, getFirestore, getAdmin, firebaseStatus, fsGet, fsSet, fsAdd, fsUpdate, fsDelete, fsQuery, fsList, cols };
+export default {
+  initFirebase,
+  getFirestore,
+  getAdmin,
+  firebaseStatus,
+  fsGet,
+  fsSet,
+  fsAdd,
+  fsUpdate,
+  fsDelete,
+  fsQuery,
+  fsList,
+  cols,
+};
