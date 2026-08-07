@@ -10,8 +10,6 @@ services:
         value: "20"
       - key: JWT_SECRET
         generateValue: true
-      - key: APP_URL
-        sync: false
       - key: CORS_ORIGIN
         value: "*"
       - key: SMTP_HOST
@@ -26,7 +24,11 @@ services:
         sync: false
       - key: FIREBASE_PROJECT_ID
         value: rg-tournament-ccd7d
-      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+      - key: OWNER_ADMIN_EMAIL
+        value: husdainshah2@gmail.com
+      - key: OWNER_ADMIN_PASSWORD
         sync: false
+      - key: SEED_FORCE_PASSWORD
+        value: "1"
       - key: API_RATE_LIMIT
         value: "120"

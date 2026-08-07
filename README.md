@@ -1,37 +1,24 @@
-# AI Agent Pro API (v2.52.0-firebase)
+# AI Agent Pro API (Server only)
 
-Public API + Team OS engine. Firebase + Gmail SMTP ready for Render.
+Backend API + Firebase Firestore.
 
-## Quick start (local)
+## Stack
+- Express + TypeScript (tsx)
+- Firebase Admin (credentials: `Tiktok.txt`)
+- SMTP email (env)
+- Auth / plans / billing / workspace / agent engine
 
+## Run
 ```bash
 npm install
 npm start
-# http://localhost:3000
-# Health: GET /api/health  or  /api/v1/health
+# GET /api/health
+# /api/v1/*
 ```
 
-## Env (already in `.env`)
+## Not in this repo
+- Load balancer + Central Admin → **aap-control-plane**
+- Frontend / APK → separate later
 
-- SMTP: Gmail (`newgenerationbox506@gmail.com`)
-- Firebase project: `rg-tournament-ccd7d`
-- Service account: `firebase-service-account.json`
-
-## Render
-
-1. Connect this private repo
-2. Build: `npm install`
-3. Start: `npm start`
-4. Env vars already listed in `render.yaml` (or set from dashboard)
-
-## Firebase
-
-- Admin SDK initializes on boot
-- Health endpoint shows Firebase status
-- Collections ready: users, providers, conversations, messages, payments, plans, announcements, otps, settings
-
-## Notes
-
-- First registered user becomes **admin**
-- Digital Twin + workspace tools run on real disk
-- Secrets are in repo for testing (private repo). Change later.
+## Owner admin (seed on boot)
+`OWNER_ADMIN_EMAIL` / `OWNER_ADMIN_PASSWORD` env
