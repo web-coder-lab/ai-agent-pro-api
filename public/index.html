@@ -1,59 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>AI Agent Pro API</title>
-  <meta name="theme-color" content="#09090b"/>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh; font-family: Inter, system-ui, sans-serif;
-      background: #09090b; color: #fafafa;
-      display: flex; align-items: center; justify-content: center; padding: 24px;
-    }
-    .card {
-      width: 100%; max-width: 440px; background: #121214;
-      border: 1px solid #27272a; border-radius: 16px; padding: 28px 24px;
-    }
-    h1 { margin: 0 0 8px; font-size: 1.35rem; }
-    p { margin: 0 0 16px; color: #a1a1aa; font-size: 0.9rem; line-height: 1.5; }
-    .ok { color: #34d399; font-family: ui-monospace, monospace; font-size: 0.8rem; }
-    .err { color: #f87171; font-family: ui-monospace, monospace; font-size: 0.8rem; }
-    a {
-      display: inline-block; margin: 6px 8px 0 0; padding: 8px 12px;
-      border-radius: 10px; background: #7c3aed; color: #fff;
-      text-decoration: none; font-size: 0.85rem; font-weight: 600;
-    }
-    a.secondary { background: #27272a; color: #e4e4e7; }
-    code { font-size: 0.8rem; color: #c4b5fd; }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>AI Agent Pro API</title>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+  font-family:system-ui,sans-serif;background:#07070a;color:#e4e4e7;}
+  .box{max-width:420px;padding:28px;border:1px solid #27272f;border-radius:16px;background:#12121a;text-align:center}
+  a{color:#a78bfa}
+  code{font-size:.85rem;color:#a1a1aa}
+</style>
 </head>
 <body>
-  <div class="card">
-    <h1>AI Agent Pro · API Server</h1>
-    <p>Public service backend. Website/app clients use <code>/api/v1</code>.</p>
-    <div id="status" class="err">Checking…</div>
-    <div style="margin-top:18px">
-      <a href="/api/v1/health">Health</a>
-      <a class="secondary" href="/api/v1/docs">API Docs</a>
-      <a class="secondary" href="/api/v1/plans">Plans</a>
-      <a class="secondary" href="/api/v1/openapi.json">OpenAPI</a>
-      <a class="secondary" href="/admin.html">Admin</a>
-    </div>
-  </div>
-  <script>
-    fetch('/api/v1/health').then(r => r.json()).then(j => {
-      const el = document.getElementById('status');
-      if (j.ok || j.status === 'ok' || (j.data && j.data.status === 'ok')) {
-        el.className = 'ok';
-        el.textContent = 'API online · ' + (j.data?.time || j.time || 'ok');
-      } else {
-        el.textContent = JSON.stringify(j);
-      }
-    }).catch(e => {
-      document.getElementById('status').textContent = 'Offline: ' + e.message;
-    });
-  </script>
+<div class="box">
+  <h1 style="margin:0 0 8px;font-size:1.25rem">AI Agent Pro API</h1>
+  <p style="color:#a1a1aa;line-height:1.5">Backend only · Admin panel alag app hai</p>
+  <p><code>GET /api/health</code> · <code>/api/v1/*</code></p>
+</div>
 </body>
 </html>
